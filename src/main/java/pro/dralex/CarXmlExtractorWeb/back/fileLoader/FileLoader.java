@@ -17,9 +17,9 @@ public class FileLoader {
     private final ConcurrentHashMap<String, FileProgressStatus> progressBars = new ConcurrentHashMap<>();
     private final int numberOfThreads;
     private final ExecutorService executorService;
-    public static final String avFileName = "avito.xml";
-    public  static final String auFileName = "autoru.xml";
-    public  static final String drFileName = "drom.xml";
+    public static final String avFileName = "one.xml";
+    public  static final String auFileName = "two.xml";
+    public  static final String drFileName = "three.xml";
 
 
     public FileLoader(int numberOfThreads) {
@@ -87,17 +87,12 @@ public class FileLoader {
         }
     }
     public void loadFiles(String auUrl, String avUrl, String drUrl) throws IOException {
-//        final String auUrl = "https://auto-export.s3.yandex.net/auto/price-list/catalog/cars.xml";
-//        final String avUrl = "https://autoload.avito.ru/format/Autocatalog.xml";
-//        final String drUrl = "https://www.drom.ru/cached_files/autoload/files/ref.xml";
-//        executorService = Executors.newFixedThreadPool(3);
         Downloader task1 = new Downloader(new URL(auUrl), auFileName);
         Downloader task2 = new Downloader(new URL(avUrl), avFileName);
         Downloader task3 = new Downloader(new URL(drUrl), drFileName);
         executorService.execute(task1);
         executorService.execute(task2);
         executorService.execute(task3);
-
     }
 
     public boolean isAllFinished() {
