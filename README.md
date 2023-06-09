@@ -19,5 +19,6 @@ The repository is a part of a project (Some parts of the code are NDA-protected)
 ### Workflow
 * File tab: https://youtu.be/dvpriJHUeB8
 * Xml tab: https://youtu.be/WWdHwBsVZ0Q
+* Makes tab: https://youtu.be/xf3ObBBK9-c 
 
 
