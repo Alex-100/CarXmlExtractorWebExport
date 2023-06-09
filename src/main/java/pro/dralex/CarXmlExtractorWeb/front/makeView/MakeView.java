@@ -18,34 +18,38 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
-import pro.dralex.CarXmlExtractorWeb.back.fileLoader.FileLoader;
-import pro.dralex.CarXmlExtractorWeb.back.repo.CarMakeRepository;
-import pro.dralex.CarXmlExtractorWeb.back.xml.*;
+import pro.dralex.CarXmlExtractorWeb.back.makes.CarMakeConnector;
+import pro.dralex.CarXmlExtractorWeb.back.makes.CarMakeConnectorManual;
+import pro.dralex.CarXmlExtractorWeb.back.makes.ConnectorSource;
+import pro.dralex.CarXmlExtractorWeb.back.makes.MakeService;
+import pro.dralex.CarXmlExtractorWeb.back.xml.MakesFromXml;
+import pro.dralex.CarXmlExtractorWeb.front.MainLayout;
 import pro.dralex.CarXmlExtractorWeb.front.Message;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-@Route(value = "xml-makes")
+@Route(value = "makes", layout = MainLayout.class)
 @Slf4j
 public class MakeView extends VerticalLayout {
-    private final CarMakeTmpRepository carMakeTmpRepository;
-    private final CarMakeRepository carMakeRepository;
-    private Grid<CarMakeConnectorTmp> gridManual;
+    private Grid<CarMakeConnectorManual> gridManual;
     private Grid<CarMakeConnector> gridSupported;
-    private final MakesResultFromXml makesResultFromXml;
+    private MakesFromXml makesFromXml;
+    private final MakeService makeService;
 
-    public MakeView(CarMakeTmpRepository carMakeTmpRepository, CarMakeRepository carMakeRepository) {
-        this.carMakeRepository = carMakeRepository;
-        this.carMakeTmpRepository = carMakeTmpRepository;
-        XmlExtractor xmlExtractor = new XmlExtractor();
-        makesResultFromXml = getData(xmlExtractor);
+    public MakeView(MakeService makeService) {
+        this.makeService = makeService;
+    }
+
+    @Override
+    protected void onAttach(AttachEvent attachEvent) {
+        makesFromXml = getAllMakesFromXml();
 
         setSizeFull();
 
         Component supported = getSupportedTab();
-        Component unSupported = getUnsupportedTab(makesResultFromXml);
+        Component unSupported = getUnsupportedTab();
 
         TabSheet tabSheet = new TabSheet();
         tabSheet.setSizeFull();
@@ -54,7 +58,7 @@ public class MakeView extends VerticalLayout {
 
         add(tabSheet);
 
-        gridSupported.setItems(carMakeRepository.findAll());
+        gridSupported.setItems(makeService.getSupportedMakes());
 
     }
 
@@ -71,10 +75,8 @@ public class MakeView extends VerticalLayout {
                 Message.show("An field is empty. You should full up all fields", true);
             } else {
                 Long id = Long.parseLong(idIndex.getValue());
-//                ServiceTmp serviceTmp = new ServiceTmp(carMakeRepository);
-//                serviceTmp.updateSupportGridItem(id, avStyleText.getValue(), auStyleText.getValue(), drStyleText.getValue());
                 updateSupportGridItem(id, avStyleText.getValue(), auStyleText.getValue(), drStyleText.getValue());
-                gridSupported.setItems(carMakeRepository.findAll());
+                gridSupported.setItems(makeService.getSupportedMakes());
             }
         });
 
@@ -83,8 +85,8 @@ public class MakeView extends VerticalLayout {
             if(!idIndex.getValue().isEmpty()) {
                 showSuggestDialog(event1 -> {
                     Long id = Long.parseLong(idIndex.getValue());
-                    carMakeRepository.deleteById(id);
-                    gridSupported.setItems(carMakeRepository.findAll());
+                    makeService.deleteSupportedMake(id);
+                    gridSupported.setItems(makeService.getSupportedMakes());
                 });
             } else {
                 Message.show("Cannot delete an empty row", true);
@@ -99,6 +101,7 @@ public class MakeView extends VerticalLayout {
            drStyleText.setValue("");
            idIndex.setValue("");
         });
+
         HorizontalLayout buttonLayout = new HorizontalLayout(saveButton, deleteButton, cancelButton);
         FormLayout formLayout = new FormLayout(
                 avStyleText,
@@ -111,7 +114,8 @@ public class MakeView extends VerticalLayout {
         gridSupported = new Grid<>(CarMakeConnector.class);
         gridSupported.setSelectionMode(Grid.SelectionMode.SINGLE);
         gridSupported.setColumns("avStyle", "auStyle", "drStyle");
-        gridSupported.setSizeFull();
+        gridSupported.setHeightFull();
+        gridSupported.setMinWidth(70, Unit.PERCENTAGE);
         gridSupported.getColumns().forEach(col -> col.setAutoWidth(true));
         gridSupported.addItemClickListener(event -> {
             CarMakeConnector connector = event.getItem();
@@ -124,15 +128,15 @@ public class MakeView extends VerticalLayout {
 
         Button saveToDbButton = new Button(new Icon("lumo","reload"));
         saveToDbButton.addClickListener(event -> {
-            gridSupported.setItems(carMakeRepository.findAll());
+            gridSupported.setItems(makeService.getSupportedMakes());
         });
 
         Button addNewButton = new Button("Add new");
 
         HorizontalLayout supportedLayout = new HorizontalLayout(gridSupported, formLayout);
-        supportedLayout.setFlexGrow(3, gridSupported);
-        supportedLayout.setFlexGrow(1, formLayout);
         supportedLayout.setSizeFull();
+        supportedLayout.setFlexGrow(4, gridSupported);
+        supportedLayout.setFlexGrow(1, formLayout);
 
         HorizontalLayout toolBarSupported = new HorizontalLayout(saveToDbButton, addNewButton);
         VerticalLayout supported = new VerticalLayout(toolBarSupported, supportedLayout);
@@ -140,19 +144,20 @@ public class MakeView extends VerticalLayout {
         return supported;
     }
 
-    private Component getUnsupportedTab(MakesResultFromXml makesResultFromXml){
-
+    private Component getUnsupportedTab(){
 
         ////... form layout
 
         HorizontalLayout formLayout = new HorizontalLayout();
-        formLayout.setMinHeight(100, Unit.PIXELS);
 
         TextField avLabel = new TextField("Av label");
+        avLabel.setMaxWidth(120, Unit.PIXELS);
         avLabel.setReadOnly(true);
         TextField auLabel = new TextField("Au label");
+        auLabel.setMaxWidth(120, Unit.PIXELS);
         auLabel.setReadOnly(true);
         TextField drLabel = new TextField("Dr label");
+        drLabel.setMaxWidth(120, Unit.PIXELS);
         drLabel.setReadOnly(true);
         Button button = new Button(new Icon("lumo", "arrow-right"));
         button.addClickListener(event -> {
@@ -160,13 +165,13 @@ public class MakeView extends VerticalLayout {
             String avText = avLabel.getValue();
             String drText = drLabel.getValue();
             if(!auText.isEmpty() && !avText.isEmpty() && !drText.isEmpty()) {
-                if (carMakeTmpRepository.getByFields(auText, avText, drText).isPresent()){
+                if (makeService.isManualMakePresent(auText, avText, drText)){
                     String msg = "Make [" + auText + "] [" + avText + "] " + "[" + drText + "] is exist";
                     Message.show(msg, true);
                     return;
                 }
-                CarMakeConnectorTmp carMakeConnectorTmp = new CarMakeConnectorTmp(auText, avText, drText, ConnectorSource.MANUAL);
-                carMakeTmpRepository.save(carMakeConnectorTmp);
+                CarMakeConnectorManual carMakeConnectorManual = new CarMakeConnectorManual(avText, auText, drText, ConnectorSource.MANUAL);
+                makeService.saveManualMake(carMakeConnectorManual);
                 gridManual.setItems(getManualGridData());
             } else {
                 Message.show("Impossible to add, because one/many fields are empty","EMPTY_FIELD", true);
@@ -175,26 +180,28 @@ public class MakeView extends VerticalLayout {
 
         formLayout.add(avLabel, auLabel, drLabel, button);
         formLayout.setDefaultVerticalComponentAlignment(Alignment.BASELINE);
+        formLayout.setMaxWidth(70, Unit.PERCENTAGE);
+
 
 
         ////... content layout
 
         ListBox<String> avListBox = new ListBox<>();
-        avListBox.setItems(makesResultFromXml.getAvStyleUnsupported());
+        avListBox.setItems(makesFromXml.getAvStyleUnsupported());
         avListBox.addValueChangeListener(event -> {
             avLabel.setValue(event.getValue()!=null ? event.getValue():"");
         });
         VerticalLayout avLayout = new VerticalLayout(new Text("Av Style"), avListBox);
 
         ListBox<String> auListBox = new ListBox<>();
-        auListBox.setItems(makesResultFromXml.getAuStyleUnsupported());
+        auListBox.setItems(makesFromXml.getAuStyleUnsupported());
         auListBox.addValueChangeListener(event -> {
             auLabel.setValue(event.getValue()!=null ? event.getValue():"");
         });
         VerticalLayout auLayout = new VerticalLayout(new Text("Au Style"), auListBox);
 
         ListBox<String> drListBox = new ListBox<>();
-        drListBox.setItems(makesResultFromXml.getDrStyleUnsupported());
+        drListBox.setItems(makesFromXml.getDrStyleUnsupported());
         drListBox.addValueChangeListener(event -> {
             drLabel.setValue(event.getValue()!=null ? event.getValue():"");
         });
@@ -211,10 +218,10 @@ public class MakeView extends VerticalLayout {
         idTextField.setVisible(false);
         Button buttonSend = new Button("Send to supported");
         buttonSend.addClickListener(event -> {
-            List<CarMakeConnectorTmp> listXml = this.makesResultFromXml.getSupportedMakes();
-            List<CarMakeConnectorTmp> listRepo = carMakeTmpRepository.findAll();
-            List<CarMakeConnector> carMakeResult = new ArrayList<>();
-            carMakeResult.addAll(
+            List<CarMakeConnectorManual> listXml = this.makesFromXml.getSupportedMakes();
+            List<CarMakeConnectorManual> listManualMakes = makeService.getManualMakes();
+            List<CarMakeConnector> result = new ArrayList<>();
+            result.addAll(
                     listXml.stream()
                     .map(item -> {
                         CarMakeConnector connector = new CarMakeConnector();
@@ -223,8 +230,8 @@ public class MakeView extends VerticalLayout {
                     })
                     .toList()
             );
-            carMakeResult.addAll(
-                    listRepo.stream()
+            result.addAll(
+                    listManualMakes.stream()
                     .map(item -> {
                         CarMakeConnector connector = new CarMakeConnector();
                         BeanUtils.copyProperties(item, connector, "id", "source");
@@ -232,11 +239,11 @@ public class MakeView extends VerticalLayout {
                     })
                     .toList()
             );
-            log.info("saved items:{}", carMakeResult.size());
-            carMakeRepository.deleteAll();
-            carMakeRepository.saveAll(carMakeResult);
-            gridSupported.setItems(carMakeRepository.findAll());
-            Message.show("Sent " + carMakeResult.size() + " items",false);
+            log.info("saved items:{}", result.size());
+            makeService.deleteAllSupportedMakes();
+            makeService.saveAllSupportedMakes(result);
+            gridSupported.setItems(makeService.getSupportedMakes());
+            Message.show("Sent " + result.size() + " items",false);
         });
 
         Button buttonDelete = new Button("Remove");
@@ -244,9 +251,9 @@ public class MakeView extends VerticalLayout {
         buttonDelete.addClickListener(eventDelete -> {
             if(!idTextField.isEmpty() && idTextField.getValue() != null) {
                 Long id = Long.valueOf(idTextField.getValue());
-                Optional<CarMakeConnectorTmp> item = carMakeTmpRepository.findById(id);
+                Optional<CarMakeConnectorManual> item = makeService.findManualMakeById(id);
                 if(item.isPresent() && item.get().getSource() == ConnectorSource.MANUAL) {
-                    carMakeTmpRepository.deleteById(id);
+                    makeService.deleteManualMakeById(id);
                     gridManual.setItems(getManualGridData());
                 } else {
                     Message.show("Impossible to delete auto fields", true);
@@ -258,7 +265,7 @@ public class MakeView extends VerticalLayout {
         sendButtonLayout.setMinHeight(100, Unit.PIXELS);
         sendButtonLayout.setMinWidth(100, Unit.PERCENTAGE);
 
-        gridManual = new Grid<>(CarMakeConnectorTmp.class);
+        gridManual = new Grid<>(CarMakeConnectorManual.class);
         gridManual.addClassNames(LumoUtility.Border.NONE);
         gridManual.setSelectionMode(Grid.SelectionMode.SINGLE);
         gridManual.setColumns("avStyle", "auStyle", "drStyle", "source");
@@ -276,38 +283,27 @@ public class MakeView extends VerticalLayout {
         VerticalLayout manualLayout = new VerticalLayout(sendButtonLayout, gridManual);
 
 
-
         ////...split layout
         SplitLayout splitLayout = new SplitLayout(makeSelectLayout, manualLayout);
         splitLayout.setSplitterPosition(55.0);
         return  splitLayout;
     }
 
-    private List<CarMakeConnectorTmp> getManualGridData(){
-        List<CarMakeConnectorTmp> list1 = makesResultFromXml.getSupportedMakes();
-        List<CarMakeConnectorTmp> list2 = carMakeTmpRepository.findAll();
+    private List<CarMakeConnectorManual> getManualGridData(){
+        List<CarMakeConnectorManual> list1 = makesFromXml.getSupportedMakes();
+        List<CarMakeConnectorManual> list2 = makeService.getManualMakes();
         list2.addAll(list1);
         return list2;
     }
-//    private void updateList(MakesResult makesResult) {
-//        try {
-//            final List<CarMakeConnectorTmp> supportedMakes = makesResult.getSupportedMakes();
-//            gridSupported.setItems(supportedMakes);
-//            gridSupported.getDataProvider().refreshAll();
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//            Message.show(e.getMessage(), e.getClass().getCanonicalName(), true);
-//        }
-//    }
 
-    private MakesResultFromXml getData(XmlExtractor xmlExtractor){
+    private MakesFromXml getAllMakesFromXml(){
         try {
-            return xmlExtractor.getSupportedMakes(FileLoader.avFileName, FileLoader.auFileName, FileLoader.drFileName);
+            return makeService.getAllMakesFromXml();
         } catch (Exception e) {
             e.printStackTrace();
             Message.show(e.getMessage(), e.getClass().getCanonicalName(), true);
         }
-        return new MakesResultFromXml();
+        return new MakesFromXml();
     }
 
     private void showSuggestDialog(ComponentEventListener<ClickEvent<Button>> lambda){
@@ -319,7 +315,6 @@ public class MakeView extends VerticalLayout {
         deleteButton.addClickListener(event -> dialog.close());
         deleteButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY,
                 ButtonVariant.LUMO_ERROR);
-//        deleteButton.getStyle().set("margin-right", "auto");
         dialog.getFooter().add(deleteButton);
 
         Button cancelButton = new Button("Cancel", (e) -> dialog.close());
@@ -329,12 +324,12 @@ public class MakeView extends VerticalLayout {
     }
 
     public void updateSupportGridItem(Long id, String avStyle, String auStyle, String drStyle) {
-        Optional<CarMakeConnector> connectorOptional = carMakeRepository.findById(id);
+        Optional<CarMakeConnector> connectorOptional = makeService.findSupportedById(id);
         if(connectorOptional.isPresent()) {
             connectorOptional.get().setAuStyle(avStyle);
             connectorOptional.get().setAvStyle(auStyle);
             connectorOptional.get().setDrStyle(drStyle);
-            carMakeRepository.save(connectorOptional.get());
+            makeService.saveSupportedMake(connectorOptional.get());
         } else {
             Message.show("Cannot find fiend with id:" + id, true);
         }

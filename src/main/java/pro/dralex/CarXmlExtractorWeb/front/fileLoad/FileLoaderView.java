@@ -13,8 +13,9 @@ import com.vaadin.flow.router.Route;
 import lombok.extern.slf4j.Slf4j;
 import pro.dralex.CarXmlExtractorWeb.back.url.UrlContainer;
 import pro.dralex.CarXmlExtractorWeb.back.url.UrlService;
+import pro.dralex.CarXmlExtractorWeb.front.MainLayout;
 
-@Route(value = "files")
+@Route(value = "files", layout = MainLayout.class)
 @PageTitle("File load")
 @Slf4j
 public class FileLoaderView extends VerticalLayout {
